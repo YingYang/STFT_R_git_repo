@@ -3,49 +3,30 @@ import numpy as np
 from mne.inverse_sparse.mxne_optim import _Phi, _PhiT
 import os,sys,inspect
 # for my desktop
-os.chdir('/home/ying/Dropbox/MEG_source_loc_proj/stft_tree_group_lasso/')
+os.chdir('/home/ying/Dropbox/MEG_source_loc_proj/STFT_R_git_repo/')
 # for my laptop
 #os.chdir('/home/yingyang/Dropbox/MEG_source_loc_proj/stft_tree_group_lasso/')
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
 sys.path.insert(0, parentdir)
-sys.path.insert(0, parentdir + "/Spline_Regression/")
-import stft_tree_group_lasso as solver
-from get_b_splines import *
+import STFT_R
+import time
+from STFT_R.get_gradient import get_gradient0, get_gradient1, get_gradient1_L21
+ 
 
-
-sys.path.insert(0, currentdir + "/sparse_stft")
-from sparse_stft import sparse_Phi, sparse_PhiT
-
-
-
-N = 120
-x = np.arange(0,1,1/N)
-internal_knots = np.array([0.5])
-basis = get_b_spline_dm(x,internal_knots,deg = 3)
-B = np.hstack([basis, np.ones([N,1])])
-# adding this intercept messes up everything, why?
-print np.linalg.cond(basis)
-
-
-n_channels = 50
+n_channels = 30
 n_times = 100
-n_dipoles = 100
+n_dipoles = 1000
 G = np.random.randn(n_channels, n_dipoles)
 n0 = 6
 true_group = np.arange(0,n0)
 
 # note the elements of the list must be arrays
 n_orient = 1
-n_coefs = 50
-p = 1
 
 DipoleGroup = list()
 for i in range(n_dipoles):
     DipoleGroup.append(np.array([i]).astype(int))
-    
-    
-    
     
 DipoleGroupWeight = np.ones(len(DipoleGroup))/np.float(len(DipoleGroup))
 
@@ -117,194 +98,191 @@ for i in range(n_trials):
 #gradient = phi(G.T.dot(u))
 #abs_grad = np.abs(gradient)
 
-
-
-
-
 # my method
 p = 2
 DipoleGroupWeight = np.ones(len(DipoleGroup))/np.float(len(DipoleGroup))
 alpha = 1E-1*n_dipoles
 beta = 1E-1*n_dipoles
-q = n_trials
-Flag_trial_by_trial = False
-pq = (p+q) if Flag_trial_by_trial else p
-Z_ini = (np.random.randn(n_dipoles,n_coefs*pq) + 1j* np.random.randn(n_dipoles,n_coefs*pq))*1E-3
+Z_ini = (np.random.randn(n_dipoles,n_coefs*p) + 1j* np.random.randn(n_dipoles,n_coefs*p))*1E-3
 active_set_z_ini = np.ones(n_dipoles, dtype = np.bool)
 active_t_ind_ini = np.ones(n_step, dtype = np.bool)
 
-alpha, beta, gamma = 100,50,10
-X = dm.copy()
-Z,active_set, active_t_ind, obj = solver.optim_tree_group_lasso_tsparse.solve_stft_regression_tree_group_tsparse\
-                                (M,G,X,
-                                alpha,beta,gamma, DipoleGroup,DipoleGroupWeight,
-                                Z_ini,active_set_z_ini, active_t_ind_ini,
-                                n_orient= 1, wsize=wsize, tstep = 4,
-                                maxit=100, tol = 1e-3,
-                                Flag_trial_by_trial = Flag_trial_by_trial,
-                                lipschitz_constant = None)
+alpha, beta, gamma = 10,10,10
+X = dm.copy()            
+G_list = [G]
+G_ind = np.zeros(X.shape[0], dtype = np.int)    
 
-# visualization
-# My estimate can be larger than the truth,
-# In lasso, theoretically, the estimated is biased towards zero
-# Yifei did an experiment, if the design matrix is has a large cond val,
-# i.e. low rank, this can happen. 
-# my design matrix are the STFT coefs. so yes. 
-plt.figure()
-plt.subplot(2,2,1)
-plt.plot(np.real(Z).T)
-plt.subplot(2,2,2)
-plt.plot(np.real(Z00).T)
-plt.subplot(2,2,3)
-plt.plot(np.imag(Z).T)
-plt.subplot(2,2,4)
-plt.plot(np.imag(Z00).T)
-plt.show()
-
-
-
-
-
-result_dual = solver.optim_tree_group_lasso_duality.compute_dual_gap(
-                M, G, X, Z, active_set,  obj, 
-                alpha, beta, gamma,
-                DipoleGroup, DipoleGroupWeight, 
-                n_orient,  
-                wsize = 16, tstep = 4, Flag_trial_by_trial= Flag_trial_by_trial)
-
-print result_dual['feasibility_dist']/np.linalg.norm(result_dual['gradient'])
- 
-# ================== debug  for "optim_tree_group_lasso_duality"  ========== 
-plt.figure()
-plt.subplot(2,1,1)
-plt.plot(np.real(Z[1,:]))
-plt.subplot(2,1,2)
-plt.plot(np.real(gradient[1,:]))     
-plt.figure()
-plt.subplot(2,1,1)
-plt.plot(np.imag(Z[1,:]))
-plt.subplot(2,1,2)
-plt.plot(np.imag(gradient[1,:]))   
-# only look at Z[1,230]
-# compute the group norm for three levels
-j0 = 229
-norm_alpha = np.linalg.norm(Z[0,:])
-norm_beta  = np.linalg.norm(np.hstack([Z[0,j0], Z[0,j0-n_coefs]]))
-norm_gamma = np.abs(Z[0,j0])
-ratio = alpha_weight[0]/norm_alpha + beta/norm_beta + gamma/norm_gamma
-print Z[0,j0]*ratio + gradient[1,j0]
-print b[1,j0]
-# b seems to be correct
-b_0 = np.zeros(b.shape, dtype = np.complex)
-b_0[nonzero_Z_full] = b[nonzero_Z_full]
-plt.imshow(np.abs(b_0))
-plt.colorbar()
-# ================== end of debugfor "optim_tree_group_lasso_duality"======= 
-
-
-
-## L2 penalty on all the other dipoles
-#import time
-#t0 = time.time()
-#DipoleGroup_L2 = DipoleGroup[0:6]
-#DipoleGroup_L2.append(np.arange(7,n_dipoles))
-#DipoleGroupWeight_L2 = np.ones(len(DipoleGroup_L2))/len(DipoleGroup_L2)
-#Z1,active_set_z1, active_t_ind1, obj1 = solver.optim_tree_group_lasso_tsparse.solve_stft_regression_tree_group_tsparse\
-#                                (M,G,X,
-#                                alpha,beta,gamma, DipoleGroup_L2,DipoleGroupWeight_L2,
-#                                Z_ini,active_set_z_ini, active_t_ind_ini,
-#                                n_orient= 1, wsize=wsize, tstep = 4,
-#                                maxit=100, tol = 1e-2,
-#                                Flag_trial_by_trial = Flag_trial_by_trial,
-#                                lipschitz_constant = None)
-#print time.time()-t0
-
-
-
-active_set_z = np.zeros(n_dipoles, dtype = bool)
-active_set_z[0:6] = True
-Z1,active_set_z1,_,obj1 = solver.optim_tree_group_lasso_tsparse.solve_stft_regression_tree_group_tsparse\
-                                (M,G[:,true_group],X,
-                                alpha,beta, gamma,
-                                DipoleGroup[0:6],DipoleGroupWeight[0:6],
-                                Z_ini[0:6,:],active_set_z[0:6], active_t_ind_ini,
-                                n_orient=1, wsize=wsize, tstep = 4,
-                                maxit=100, tol = 1e-3,
-                                Flag_trial_by_trial = Flag_trial_by_trial,
-                                lipschitz_constant = None)
-active_set_z2 = np.zeros(n_dipoles, dtype = np.bool)
-active_set_z2[0:6]= active_set_z1    
-result_dual = solver.optim_tree_group_lasso_duality.compute_dual_gap(
-                M, G, X, Z1, active_set_z2,  obj1, 
-                alpha, beta, gamma,
-                DipoleGroup, DipoleGroupWeight, 
-                n_orient,  
-                wsize = 16, tstep = 4, Flag_trial_by_trial= Flag_trial_by_trial)
-print result_dual['feasibility_dist']/np.linalg.norm(result_dual['gradient'])
-                            
-
-
-
-# more tests
-active_set0 = np.zeros(n_dipoles, dtype = np.bool)
-active_set0[true_group] = True
-result_dual = solver.optim_tree_group_lasso_duality.compute_dual_gap(
-                M, G, X, Z00, active_set0,  obj1, 
-                alpha, beta, gamma,
-                DipoleGroup, DipoleGroupWeight, 
-                n_orient,  
-                wsize = 16, tstep = 4, Flag_trial_by_trial= Flag_trial_by_trial)
-print result_dual['feasibility_dist']/np.linalg.norm(result_dual['gradient'])
-
-
-Z_ini1 = Z_ini[7:10]
-active_set_ini1 = np.zeros(n_dipoles, dtype = np.bool)
-active_set_ini1[7:10] = True
-result_dual = solver.optim_tree_group_lasso_duality.compute_dual_gap(
-                M, G, X, Z_ini1, active_set_ini1,  obj1, 
-                alpha, beta, gamma,
-                DipoleGroup, DipoleGroupWeight, 
-                n_orient,  
-                wsize = 16, tstep = 4, Flag_trial_by_trial= Flag_trial_by_trial)
-print result_dual['feasibility_dist']/np.linalg.norm(result_dual['gradient'])
-plt.plot(result_dual['feasibility_dist_DipoleGroup'])
-
-active_set_J_ini = np.zeros(len(DipoleGroup), dtype = np.bool)
-active_set_J_ini[0:1] = True
-active_set_J_ini[15:20] = True
-
-result = solver.optim_tree_group_lasso_active_set.solve_stft_regression_tree_group_active_set\
-                                (M,G,X,
-                                alpha,beta,gamma, 
+maxit = 100
+tol = 1E-3
+t0 = time.time()         
+Z,active_set, obj = STFT_R.L21_tsparse.solve_stft_regression_tree_group_tsparse\
+                                (M, G_list, G_ind, X, alpha,beta, gamma, 
                                 DipoleGroup,DipoleGroupWeight,
-                                Z_ini,active_set_z_ini, active_t_ind_ini,
+                                Z_ini, active_set_z_ini, 
+                                n_orient=1, wsize=16, tstep = 4,
+                                maxit=maxit, tol = tol,lipschitz_constant = None,
+                                Flag_backtrack = True, eta = 1.5, L0 = 1.0,
+                                Flag_verbose = True)
+time0 = time.time()-t0
+
+if False:
+    t0 = time.time()
+    Z1,active_set1, obj1 = STFT_R.L21_tsparse.solve_stft_regression_tree_group_tsparse\
+                                    (M, G_list, G_ind, X, alpha,beta, gamma, 
+                                    DipoleGroup,DipoleGroupWeight,
+                                    Z_ini, active_set_z_ini, 
+                                    n_orient=1, wsize=16, tstep = 4,
+                                    maxit=maxit, tol = tol,lipschitz_constant = None,
+                                    Flag_backtrack = False, eta = 1.5, L0 = 1.0,
+                                    Flag_verbose = True)                                                           
+    time1 = time.time()-t0
+    
+    # The following are tested, but now disabled. L21 will no longer be imported. 
+#    t0 = time.time()         
+#    Z2,active_set2, obj2 = STFT_R.L21.solve_stft_regression_tree_group\
+#                                    (M, G_list, G_ind, X, alpha,beta, gamma, 
+#                                    DipoleGroup,DipoleGroupWeight,
+#                                    Z_ini, active_set_z_ini, 
+#                                    n_orient=1, wsize=16, tstep = 4,
+#                                    maxit=maxit, tol = tol,lipschitz_constant = None,
+#                                    Flag_backtrack = True, eta = 1.5, L0 = 1.0,
+#                                    Flag_verbose = True)
+#    time2= time.time()-t0
+#    t0 = time.time()         
+#    Z3,active_set3, obj3 = STFT_R.L21.solve_stft_regression_tree_group\
+#                                    (M, G_list, G_ind, X, alpha,beta, gamma, 
+#                                    DipoleGroup,DipoleGroupWeight,
+#                                    Z_ini, active_set_z_ini, 
+#                                    n_orient=1, wsize=16, tstep = 4,
+#                                    maxit=maxit, tol = tol,lipschitz_constant = None,
+#                                    Flag_backtrack = False, eta = 1.5, L0 = 1.0,
+#                                    Flag_verbose = True)
+#    time3 =  time.time()-t0
+#    print np.linalg.norm(Z2-Z), np.linalg.norm(Z3-Z1)
+
+
+coef_non_zero_mat = np.abs(Z) >0
+t0 = time.time()
+Z_L2, obj_L2 = STFT_R.L2_tsparse.solve_stft_regression_L2_tsparse(M,G_list, G_ind, X, Z, 
+                                    active_set, np.ones(n_step, dtype = np.bool),
+                                    coef_non_zero_mat,
+                                wsize=16, tstep = 4, delta = 0,
+                                maxit=100, tol = 1e-3,lipschitz_constant = None,
+                                Flag_backtrack = True, eta = 1.2, L0 = 1,
+                                Flag_verbose = True)
+print time.time()-t0
+if False:
+    # visualization
+    # My estimate can be larger than the truth,
+    # In lasso, theoretically, the estimated is biased towards zero
+    # Yifei did an experiment, if the design matrix is has a large cond val,
+    # i.e. low rank, this can happen. 
+    # my design matrix are the STFT coefs. so yes. 
+    plt.figure()
+    plt.subplot(2,2,1)
+    plt.plot(np.real(Z).T)
+    plt.subplot(2,2,2)
+    plt.plot(np.real(Z00).T)
+    plt.subplot(2,2,3)
+    plt.plot(np.imag(Z).T)
+    plt.subplot(2,2,4)
+    plt.plot(np.imag(Z00).T)
+    plt.show()
+    
+    Z, active_set, obj = STFT_R.L21_tsparse.solve_stft_regression_tree_group_tsparse\
+                                (M, G_list, G_ind, X, alpha,beta, gamma, 
+                                DipoleGroup,DipoleGroupWeight,
+                                Z_ini, active_set_z_ini, 
+                                n_orient=1, wsize=16, tstep = 4,
+                                maxit=500, tol =1E-6,lipschitz_constant = None,
+                                Flag_backtrack = False, eta = 2.0, L0 = 1.0,
+                                Flag_verbose = True)
+    
+    result_dual = STFT_R.L21_duality.compute_dual_gap( M, G_list, G_ind, X, Z, active_set, 
+              alpha, beta, gamma,
+              DipoleGroup, DipoleGroupWeight, n_orient,
+              wsize = 16, tstep = 4)
+    print result_dual['feasibility_dist']/np.linalg.norm(result_dual['gradient'])
+    print result_dual['feasibility_dist']/np.linalg.norm(result_dual['b'])
+
+    active_set_z = np.zeros(n_dipoles, dtype = bool)
+    active_set_z[0:6] = True
+    Z1,active_set_z1,obj1 = STFT_R.L21_tsparse.solve_stft_regression_tree_group_tsparse\
+                                    (M, [G[:,true_group]], np.zeros(n_trials, dtype = int),
+                                     X, alpha,beta, gamma, 
+                                 DipoleGroup[0:6],DipoleGroupWeight[0:6],
+                                    Z_ini[0:6,:], active_set_z[0:6], 
+                                n_orient=1, wsize=16, tstep = 4,
+                                maxit=maxit, tol = tol,lipschitz_constant = None,
+                                Flag_backtrack = True, eta = 1.1, L0 = 1.0,
+                                Flag_verbose = True)
+                               
+    active_set_z2 = np.zeros(n_dipoles, dtype = np.bool)
+    active_set_z2[0:6]= active_set_z1    
+    result_dual = STFT_R.L21_duality.compute_dual_gap(
+                    M, G_list, G_ind, X, Z1, active_set_z2, 
+              alpha, beta, gamma,
+              DipoleGroup, DipoleGroupWeight, n_orient,
+              wsize = 16, tstep = 4)
+    print result_dual['feasibility_dist']/np.linalg.norm(result_dual['gradient'])
+    # more tests
+    active_set0 = np.zeros(n_dipoles, dtype = np.bool)
+    active_set0[true_group] = True
+    result_dual = STFT_R.L21_duality.compute_dual_gap(
+                    M, G_list, G_ind, X, Z00, active_set0, 
+              alpha, beta, gamma,
+              DipoleGroup, DipoleGroupWeight, n_orient,
+              wsize = 16, tstep = 4)
+    print result_dual['feasibility_dist']/np.linalg.norm(result_dual['gradient'])
+    
+    
+    Z_ini1 = Z_ini[7:10]
+    active_set_ini1 = np.zeros(n_dipoles, dtype = np.bool)
+    active_set_ini1[7:10] = True
+    result_dual = STFT_R.L21_duality.compute_dual_gap(
+                    M, G_list, G_ind, X, Z_ini1, active_set_ini1, 
+              alpha, beta, gamma,
+              DipoleGroup, DipoleGroupWeight, n_orient,
+              wsize = 16, tstep = 4)
+    print result_dual['feasibility_dist']/np.linalg.norm(result_dual['gradient'])
+    plt.plot(result_dual['feasibility_dist_DipoleGroup'])
+    
+    active_set_J_ini = np.zeros(len(DipoleGroup), dtype = np.bool)
+    active_set_J_ini[0:1] = True
+    active_set_J_ini[15:20] = True
+    
+    result = STFT_R.L21_active_set.solve_stft_regression_tree_group_active_set\
+                                    (M,G_list, G_ind, X,
+                                alpha,beta, gamma, DipoleGroup,DipoleGroupWeight,
+                                Z_ini,active_set_z_ini, 
                                 active_set_J_ini, 
-                                n_orient=1, wsize=wsize, tstep = tstep,
-                                maxit=200, tol = 1e-2,
-                                Maxit_J = 10, Incre_Group_Numb = 2, 
-                                dual_tol = 0.1)
-
-result_dual = solver.optim_tree_group_lasso_duality.compute_dual_gap(
-                M, G, X, result['Z'], result['active_set'],  obj1, 
-                alpha, beta, gamma,
-                DipoleGroup, DipoleGroupWeight, 
-                n_orient,  
-                wsize = 16, tstep = 4, Flag_trial_by_trial= Flag_trial_by_trial)
-print result_dual['feasibility_dist']/np.linalg.norm(result_dual['gradient'])
-
-alpha_seq = np.array([1E2])
-beta_seq = np.array([1E1])
-gamma_seq = np.array([1E1])
-cv_partition_ind = np.zeros(n_trials)
-cv_partition_ind[0::2] = 1
-alpha_star, beta_star, gamma_star, cv_MSE = solver.optim_tree_group_lasso_active_set.select_alpha_beta_gamma_stft_tree_group_cv_active_set\
-                                       (M,G,X,
+                                n_orient=1, wsize= 16, tstep = 4,
+                                maxit=700, tol = 1e-6,
+                                Maxit_J = 10, Incre_Group_Numb = 50, dual_tol = 1e-2,
+                                Flag_verbose = False,
+                                Flag_backtrack = False, L0 = 1.0, eta = 1.01)
+    
+    result_dual = STFT_R.L21_duality.compute_dual_gap(
+                    M, G_list, G_ind, X, result['Z'], result['active_set'],  
+              alpha, beta, gamma,
+              DipoleGroup, DipoleGroupWeight, n_orient,
+              wsize = 16, tstep = 4)          
+    print result_dual['feasibility_dist']/np.linalg.norm(result_dual['gradient'])
+    
+    alpha_seq = np.array([1E2, 1E1])
+    beta_seq = np.array([1E1])
+    gamma_seq = np.array([1E1])
+    cv_partition_ind = np.zeros(n_trials)
+    cv_partition_ind[0::2] = 1
+    alpha_star, beta_star, gamma_star, cv_MSE = STFT_R.L21_active_set.select_alpha_beta_gamma_stft_tree_group_cv_active_set\
+                                           (M,G_list, G_ind,X, 
                                         active_set_J_ini, 
-                                        active_t_ind_ini,
-                                        DipoleGroup,DipoleGroupWeight,
-                                        alpha_seq, beta_seq, gamma_seq, 
-                                        cv_partition_ind,
+                                         DipoleGroup,DipoleGroupWeight,
+                                         alpha_seq, beta_seq, gamma_seq,
+                                         cv_partition_ind,
                                          n_orient=1, wsize= 16, tstep = 4, 
-                                         maxit=100, tol = 1e-3,
-                                         Maxit_J = 10, Incre_Group_Numb = 5, dual_tol = 1e-1,
-                                         Flag_trial_by_trial = False)
+                                         maxit=500, tol = 1e-4,
+                                         Maxit_J = 10, Incre_Group_Numb = 50, 
+                                         dual_tol = 1e-2,
+                                         Flag_verbose = False,
+                                         Flag_backtrack = False, L0 = 1.0, eta = 1.1)

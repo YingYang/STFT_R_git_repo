@@ -1,13 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Created on Thu May 15 12:10:34 2014
-
-@author: yingyang
+Changed 20160212, use the regular STFT, not the tsparse version
 """
-
 import numpy as np
 from mne.inverse_sparse.mxne_optim import _Phi, _PhiT
-from .sparse_stft import sparse_Phi, sparse_PhiT
 #import pdb
 from .get_gradient import get_gradient0, get_gradient1_L21
 
@@ -40,12 +36,9 @@ def compute_dual_gap(M, G_list, G_ind, X, Z, active_set,
     n_freq = wsize// 2+1
     n_coefs = n_step*n_freq
     phi = _Phi(wsize, tstep, n_coefs)
-    phiT = _PhiT(tstep, n_freq, n_step, n_times)
-    sparse_phi = sparse_Phi(wsize, tstep)
-    sparse_phiT = sparse_PhiT(tstep, n_freq, n_step, n_times)    
+    phiT = _PhiT(tstep, n_freq, n_step, n_times)   
     n_trials, p = X.shape
-    active_t_ind_full = np.ones(n_step, dtype = np.bool)
-            
+               
     
     n_run = len(np.unique(G_ind))
     M_list = list()
@@ -54,23 +47,19 @@ def compute_dual_gap(M, G_list, G_ind, X, Z, active_set,
         M_list.append(M[:,:,G_ind == run_id])
         X_list.append(X[G_ind == run_id, :])
     
-    
-    
     # compute the gradient to check feasibility
     gradient_y0 = get_gradient0(M_list, G_list, X_list, p, n_run,
                   n_dipoles, np.ones(n_dipoles, dtype = np.bool), n_times,
-                  n_coefs, n_coefs*p, active_t_ind_full,
-                  sparse_phi, sparse_phiT)
+                  n_coefs, n_coefs*p, phi, phiT)
     gradient_y1 = get_gradient1_L21(M_list, G_list, X_list, Z, p, n_run,
               np.int(active_set.sum()), active_set, n_times,
-              n_coefs, n_coefs*p, active_t_ind_full,
-              sparse_phi, sparse_phiT)
+              n_coefs, n_coefs*p, phi,phiT)
     gradient = gradient_y0 + gradient_y1
   
     # sanity check
     # for each dipole, get the maximum abs value among the real and imag parts
-    max_grad = np.max(np.vstack([np.max(np.abs(np.real(gradient)), axis = 1), 
-                   np.max(np.abs(np.imag(gradient)),axis = 1)]), axis = 0)
+    #max_grad = np.max(np.vstack([np.max(np.abs(np.real(gradient)), axis = 1), 
+    #               np.max(np.abs(np.imag(gradient)),axis = 1)]), axis = 0)
                    
     alpha_weight = np.zeros(n_dipoles)
     for i in range(len(DipoleGroup)):
@@ -109,7 +98,7 @@ def compute_dual_gap(M, G_list, G_ind, X, Z, active_set,
         # active_set.sum() x  n_coefs
         l2_norm_beta = np.sqrt(np.sum( (np.abs(Z_reshape))**2, axis = 1))
         # active_set.sum() x  n_coefs * p
-        l2_norm_beta_large = np.tile(l2_norm_beta,[ 1, p])                
+        l2_norm_beta_large = np.tile(l2_norm_beta, [1, p])                
        
     else: # n_orient == 3
         Z_reshape = np.reshape(Z, [active_set.sum()//3,3, p, -1])
@@ -151,7 +140,7 @@ def compute_dual_gap(M, G_list, G_ind, X, Z, active_set,
     
          
     return dict(feasibility_dist = feasibility_dist,
-                gradient = gradient,
+                gradient = gradient, b = b,
                 feasibility_dist_DipoleGroup = feasibility_dist_DipoleGroup)   
 
             
@@ -266,7 +255,7 @@ def get_feasibility( b, active_set, DipoleGroup, alpha_weight, beta, gamma,
         diff = old_obj - obj
         # debug
         if np.any(np.isnan(vg)):
-            pdb.set_trace()
+            #pdb.set_trace()
             print vg
             print b
             raise ValueError("nan found!")

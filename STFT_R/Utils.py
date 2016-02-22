@@ -10,7 +10,7 @@ from mne.inverse_sparse.mxne_optim import tf_lipschitz_constant
 
 #=============================================================================
 def get_lipschitz_const(M,G,X,phi,phiT,n_coefs,
-                        Flag_trial_by_trial = True, tol = 1e-3):   
+                        Flag_trial_by_trial = False, tol = 1e-3):   
     ''' compute the lipschitz constant for the gradient of the smooth part, 
         (sum of squared error)
         using power iteration

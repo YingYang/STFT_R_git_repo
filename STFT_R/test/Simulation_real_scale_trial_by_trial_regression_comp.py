@@ -29,7 +29,7 @@ import os,sys,inspect
 # laptop
 #os.chdir('/home/yingyang/Dropbox/MEG_source_loc_proj/stft_tree_group_lasso/')
 # desktop
-os.chdir('/home/ying/Dropbox/MEG_source_loc_proj/stft_tree_group_lasso/')
+os.chdir('/home/ying/Dropbox/MEG_source_loc_proj/STFT_R_git_repo/')
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
 sys.path.insert(0,parentdir+"/Simulation") 

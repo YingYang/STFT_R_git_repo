@@ -15,7 +15,7 @@ mne.set_log_level('warning')
 
  
 import os,sys,inspect
-currentdir = "/home/ying/Dropbox/MEG_source_loc_proj/STFT_R/test"
+currentdir = "/home/ying/Dropbox/MEG_source_loc_proj/STFT_R_git_repo/test/"
 parentdir = os.path.dirname(currentdir)
 sys.path.insert(0,parentdir) 
 sys.path.insert(0,"/home/ying/Dropbox/MEG_source_loc_proj")
@@ -126,7 +126,7 @@ X = dm
 wsize, tstep, delta, maxit, tol = 16,4,10,200, 1E-4
 
 if False:
-    from STFT_R.L2_tsparse import solve_stft_regression_L2_tsparse
+    from STFT_R.L21_tsparse import solve_stft_regression_L2_tsparse
     tmp1, tmp2 = solve_stft_regression_L2_tsparse(M,G_list, G_ind, X, Z0, 
                                         active_set_z0, active_t_ind_z0,
                                         coef_non_zero_mat,

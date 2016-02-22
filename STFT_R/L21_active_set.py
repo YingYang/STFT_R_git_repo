@@ -15,12 +15,13 @@ from .L2_tsparse import get_MSE_stft_regresion_tsparse
 # ==========================================================================
 def solve_stft_regression_tree_group_active_set(M,G_list, G_ind, X,
                                 alpha,beta, gamma, DipoleGroup,DipoleGroupWeight,
-                                Z_ini,active_set_z_ini, active_t_ind_ini,
+                                Z_ini,active_set_z_ini, 
                                 active_set_J_ini, 
                                 n_orient=1, wsize= 16, tstep = 4,
                                 maxit=200, tol = 1e-3,
                                 Maxit_J = 10, Incre_Group_Numb = 50, dual_tol = 1e-2,
-                                Flag_verbose = False):
+                                Flag_verbose = False,
+                                Flag_backtrack = True, L0 = 1.0, eta = 1.1):
     '''
     Use the active set strategy to compute the tree_group_lasso_solution                                    
     Input:
@@ -33,7 +34,7 @@ def solve_stft_regression_tree_group_active_set(M,G_list, G_ind, X,
         DipoleGroupWeight,
         Z_ini,
         active_set_z_ini,
-        active_t_ind_ini,
+
         active_set_J_ini, the initial active set for the optimization, 
                  [n_groups,] bool
         n_orient,
@@ -51,7 +52,6 @@ def solve_stft_regression_tree_group_active_set(M,G_list, G_ind, X,
     n_dipoles = G_list[0].shape[1]
     Z = Z_ini.copy()
     active_set = active_set_z_ini.copy()
-    active_t_ind = active_t_ind_ini.copy()
     n_run = len(G_list)
     for i in range(Maxit_J):
         tmp_DipoleGroup =  [DipoleGroup[j] for j in range(len(DipoleGroup))
@@ -76,17 +76,20 @@ def solve_stft_regression_tree_group_active_set(M,G_list, G_ind, X,
         for run_id in range(n_run):
             tmpG_list.append(G_list[run_id][:, tmp_active_dipoles])
         
+        # tmp_active_dipoles is alwayse a super set of active_set, due to the greedy increment of number of groups
+        # so I did not need to check if Z.shape[0] does not match tmp_active_set.sum()
         tmp_active_set = active_set[tmp_active_dipoles]
         Z_full = np.zeros([n_dipoles, Z.shape[1]], dtype = np.complex)
         Z_full[active_set,:] = Z
         Z = Z_full[tmp_active_dipoles,:]
         Z = Z[tmp_active_set,:]
-        Z, tmp_active_set, active_t_ind, obj = solve_stft_regression_tree_group_tsparse\
+        Z, tmp_active_set, obj = solve_stft_regression_tree_group_tsparse\
                                 (M,tmpG_list, G_ind,X,alpha,beta,gamma,
                                 tmp_DipoleGroup1,tmp_DipoleGroupWeight,
-                                Z, tmp_active_set, active_t_ind,
+                                Z, tmp_active_set, 
                                 n_orient=n_orient, wsize=wsize, tstep = tstep,
-                                maxit=maxit, tol = tol,  Flag_verbose = Flag_verbose)  
+                                maxit=maxit, tol = tol,  Flag_verbose = Flag_verbose,
+                                Flag_backtrack = Flag_backtrack, L0 = L0, eta = eta)  
         if isinstance(Z, np.int):
             print "zero solution"
             return None
@@ -144,13 +147,13 @@ def solve_stft_regression_tree_group_active_set(M,G_list, G_ind, X,
                         
             
     result = dict(Z= Z, active_set = active_set, 
-                      active_t_ind = active_t_ind, obj = obj,
-                      active_set_J = active_set_J, feasibility_dist = feasibility_dist)
+                      obj = obj, active_set_J = active_set_J, 
+                      feasibility_dist = feasibility_dist)
     return result
     
 #===========================================================================            
 def select_alpha_beta_gamma_stft_tree_group_cv_active_set(M,G_list, G_ind,X, 
-                                        active_set_J_ini, active_t_ind_ini,
+                                        active_set_J_ini, 
                                          DipoleGroup,DipoleGroupWeight,
                                          alpha_seq, beta_seq, gamma_seq,
                                          cv_partition_ind,
@@ -158,7 +161,8 @@ def select_alpha_beta_gamma_stft_tree_group_cv_active_set(M,G_list, G_ind,X,
                                          maxit=200, tol = 1e-3,
                                          Maxit_J = 10, Incre_Group_Numb = 50, 
                                          dual_tol = 1e-2,
-                                         Flag_verbose = False): 
+                                         Flag_verbose = False,
+                                         Flag_backtrack = True, L0 = 1.0, eta = 1.1): 
 
     ''' Find the best L1 regularization parameter gamma by cross validation
        Note that here, in training, the trial by trial paramter is estimated, 
@@ -218,7 +222,7 @@ def select_alpha_beta_gamma_stft_tree_group_cv_active_set(M,G_list, G_ind,X,
                 Z_ini = (np.random.randn(active_set_z_ini.sum(), n_coefs_all_active) \
                         + np.zeros([active_set_z_ini.sum(), n_coefs_all_active])*1j)*1E-20
                 active_set_z_ini_tmp = active_set_z_ini.copy()
-                active_t_ind_ini_tmp = np.ones(n_step, dtype = np.bool)
+               
                 for i in range(n_alpha):
                     tmp_alpha, tmp_beta, tmp_gamma = alpha_seq[i], beta_seq[j], gamma_seq[l]
                     # training  
@@ -226,31 +230,32 @@ def select_alpha_beta_gamma_stft_tree_group_cv_active_set(M,G_list, G_ind,X,
                                                                          Xtrain,
                                     tmp_alpha,tmp_beta,tmp_gamma,
                                     DipoleGroup,DipoleGroupWeight,
-                                    Z_ini,active_set_z_ini_tmp, active_t_ind_ini_tmp,
+                                    Z_ini,active_set_z_ini_tmp,
                                     active_set_J, 
                                     n_orient=n_orient, wsize=wsize, tstep = tstep,
                                     maxit=maxit, tol = tol,
                                     Maxit_J = Maxit_J, Incre_Group_Numb = Incre_Group_Numb, 
                                     dual_tol = dual_tol,
-                                    Flag_verbose = Flag_verbose)
+                                    Flag_verbose = Flag_verbose,
+                                    Flag_backtrack = Flag_backtrack, L0 = L0, eta = eta)
                     if result is None:
                         # if this happened, no need to test the following beta
                         print "zero solution"
                         continue                
                     Z, active_set_z = result['Z'], result['active_set']  
-                    active_t_ind_z = result['active_t_ind']
+                    
                     active_set_J = result['active_set_J']
                     # update the initial value
                     # because beta is ascending, the previous
                     # result is a good intial value
                     Z_ini = Z.copy()
                     active_set_z_ini_tmp = active_set_z.copy()
-                    active_t_ind_ini_tmp = active_t_ind_z.copy()
+                   
                     # only take the regression coefficients out
-                    Z_star = Z[:,0:p*n_freq*active_t_ind_z.sum()]
+                    Z_star = Z[:,0:p*n_freq*n_step]
                     # testing
                     tmp_val, _,_,_ =get_MSE_stft_regresion_tsparse(Mtest,G_list,G_ind_test,Xtest,
-                                    Z_star, active_set_z, active_t_ind_z,
+                                    Z_star, active_set_z, np.ones(n_step, dtype = bool),
                                     wsize=wsize, tstep = tstep)
                     cv_MSE[i,j,l,k] = tmp_val   
     # row for alpha, and columns for beta  

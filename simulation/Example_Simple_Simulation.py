@@ -7,6 +7,8 @@ coefficents, but there is
 
 2. Use the STFT-R and two-step MNE+regrssion to estimate the regression 
 coefficients. Then visualize the results. 
+
+Note, this is compatible to MNE 0.11. If the version does not match, upgrade the mne-package. 
 """
 
 # ========================= 0. Add paths and import modules ===================
@@ -114,7 +116,7 @@ for i in range(len(labels)):
 n_source = fwd['sol']['ncol']
 stc0_data = np.zeros([n_source, n_times])
 for i in range(len(labels)):
-    stc0 =  mne.simulation.generate_stc(fwd['src'], labels[i:i+1], stc_data[i:i+1,:], -0.1, 1.0/sfreq)
+    stc0 =  mne.simulation.simulate_stc(fwd['src'], labels[i:i+1], stc_data[i:i+1,:], -0.1, 1.0/sfreq)
     stc0_data[label_ind[i],:] = stc0.data
     del(stc0)
             
@@ -184,7 +186,7 @@ for r in range(n_trials):
     stc = mne.SourceEstimate(data = tmp_stc_data,vertices = vertices,
                              tmin = -0.1, tstep = 1.0/sfreq )  
     # generate evoked data
-    evoked = mne.simulation.simulate_evoked(fwd, stc, evoked_template, cov, sensor_snr,
+    evoked = mne.simulation.simulate_evoked(fwd, stc, evoked_template.info, cov, sensor_snr,
                      tmin=0.0, tmax=0.2, iir_filter= None)
     evoked_list.append(evoked)
     # save all the parameters above in a dict object. 
@@ -260,25 +262,30 @@ snr_tuning_seq = np.array([0.5,1,2])
 fwd_list = list([fwd])
 G_ind = np.zeros(len(evoked_list_train), dtype = np.int)
 
-maxit = 10
+maxit = 50
 tol = 1e-2
+Flag_backtrack = True
 # =======STFT-R L21 solution, on the training set ================
-result_STFT_R1 = get_solution_individual_G(evoked_list_train, fwd_list, G_ind, cov, X_train, labels, label_ind,
+result_STFT_R1 = get_solution_individual_G(evoked_list_train, fwd_list, G_ind, cov, X_train, labels, 
                           alpha_seq, beta_seq, gamma_seq,
                           delta_seq = delta_seq, snr_tuning_seq = snr_tuning_seq,
                           wsize = wsize_phi, tstep = tstep_phi, maxit = maxit, tol = tol,
                            method = "STFT-R", Incre_Group_Numb= 150, L2_option = 0, ROI_weight_param=0, 
-                          Maxit_J = 2, dual_tol = 0.15)
+                          Maxit_J = 2, dual_tol = 0.15,
+                          Flag_backtrack = Flag_backtrack, L0 = 1.0, eta = 1.1,
+                 Flag_verbose = False)
+                         
 
 plt.figure()                          
 plt.imshow( np.abs(result_STFT_R1['Z']), aspect = "auto", interpolation = "none")
 
 # =========MNE-R solution, on the training set
-result_MNE_R1 = get_solution_individual_G(evoked_list_train, fwd_list,  G_ind, cov, X_train, labels, label_ind,
+result_MNE_R1 = get_solution_individual_G(evoked_list_train, fwd_list,  G_ind, cov, X_train, labels, 
                           alpha_seq = None, beta_seq = None, gamma_seq = None,
                           delta_seq = None,
                           snr_tuning_seq = snr_tuning_seq,
-                          wsize = wsize_phi, tstep = tstep_phi,method = "MNE-R")  
+                          wsize = wsize_phi, tstep = tstep_phi,method = "MNE-R",
+                          Flag_backtrack = Flag_backtrack)  
 
 
 # ============ visulize the estimate on the training set ==========
@@ -332,27 +339,29 @@ plt.title("MNE-R")
 G_ind = np.zeros(len(evoked_list_hold), dtype = np.int)
 # STFT-R
 result_STFT_R2 = get_solution_individual_G(evoked_list_hold, fwd_list, G_ind, cov, X_hold, 
-                                           labels, label_ind,
+                                           labels, 
                           alpha_seq, beta_seq, gamma_seq,
                           delta_seq = delta_seq, snr_tuning_seq = snr_tuning_seq,
                           wsize = wsize_phi, tstep = tstep_phi, maxit = maxit,tol = tol,
                            method = "STFT-R",
                           Incre_Group_Numb= 150, L2_option = 2, ROI_weight_param=0, 
                           active_set = result_STFT_R1['active_set'],
-                          coef_non_zero_mat = result_STFT_R1['coef_non_zero_mat'])
+                          coef_non_zero_mat = result_STFT_R1['coef_non_zero_mat'],
+                            Flag_backtrack = Flag_backtrack)
 # MNE-R        
 result_MNE_R2 = get_solution_individual_G(evoked_list_hold, fwd_list, G_ind, cov, X_hold, 
-                                          labels, label_ind,
+                                          labels, 
                           alpha_seq = None, beta_seq = None, gamma_seq = None,
                           delta_seq = None,
                           snr_tuning_seq = snr_tuning_seq,
-                          wsize = wsize_phi, tstep = tstep_phi,method = "MNE-R")
+                          wsize = wsize_phi, tstep = tstep_phi,method = "MNE-R",
+                          Flag_backtrack = Flag_backtrack)
 
 
 
 ### To be updated!!!!    
 path = current_dir
-B = 5
+B = 2
 # note: this will take very long                      
 result_STFT_R2btstrp = get_bootstrapped_solution_individual_G(evoked_list_hold, 
                             fwd_list, G_ind, cov, X_hold, result_STFT_R2['Z'], 

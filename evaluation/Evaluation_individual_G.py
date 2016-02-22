@@ -10,12 +10,12 @@ import mne
 mne.set_log_level('warning')
 from mne.inverse_sparse.mxne_optim import  _PhiT
 import os
-from mne_stft_regression_individual_G import (mne_stft_regression_individual_G, 
+from MNE_stft.mne_stft_regression_individual_G import (mne_stft_regression_individual_G, 
                         select_lambda_tuning_mne_stft_regression_cv_individual_G)                     
 import STFT_R                   
 #==============================================================================
 def get_solution_individual_G(evoked_list, fwd_list, G_ind, noise_cov, X,
-                 labels, label_ind,
+                              labels = None, 
                  alpha_seq = None, beta_seq = None, gamma_seq =None, delta_seq = None,
                  snr_tuning_seq = None,
                  active_set = None,coef_non_zero_mat = None,
@@ -25,9 +25,12 @@ def get_solution_individual_G(evoked_list, fwd_list, G_ind, noise_cov, X,
                  L2_option = 1, 
                  ROI_weight_param = 0,
                  Maxit_J=10, Incre_Group_Numb=50, dual_tol=0.1,
-                 depth = None, Flag_verbose = False):
+                 depth = None, 
+                 Flag_backtrack = False, L0 = 1.0, eta = 1.1,
+                 Flag_verbose = False):
     '''
     Get the mne solutions or the solution by my method, "stft_reg"
+    Can only be applied to fixed orientation, i.e. each source point has only one direction. 
     Input:
         evoked_list, list of evoked objects,  [n_trials,]
         fwd_list, a list distinct forward solutions, when the trials are organized in runs, 
@@ -35,8 +38,8 @@ def get_solution_individual_G(evoked_list, fwd_list, G_ind, noise_cov, X,
         G_ind, [n_trials,] indices of runs, showing which fwd solution for each trial to use
         X, [n_trials,p] the design matrix
         noise_cov, noise_covariance matrix object by MNE
-        labels, [n_ROI,] a list of MNE label objects, describing each ROI
-        label_ind, list of  source indices of each ROI, 
+        labels, [n_ROI,] a list of MNE label objects, describing each ROI,
+                can be None, if yes, each individual source point is a group
         alpha_seq, beta_seq, gamma_seq, the tuning parameters for group lasso only for methods "STFT-R"
         delta_seq, tuning parameters for the L2 solution for "STFT-R" only
         snr_tuning_seq, sequence of the "snr" parameters for MNE, 
@@ -86,6 +89,8 @@ def get_solution_individual_G(evoked_list, fwd_list, G_ind, noise_cov, X,
         ['method']
         and all other tuning paramters
     '''
+    #if not mne.forward.is_fixed_orient(fwd_list[0]):
+    #    raise ValueError('Forward solution does not has fixed orientation')
     n_channels, n_times = evoked_list[0].data.shape
     n_trials = len(evoked_list)
     n_step = int(np.ceil(n_times/float(tstep)))
@@ -137,7 +142,7 @@ def get_solution_individual_G(evoked_list, fwd_list, G_ind, noise_cov, X,
         
     elif method == "STFT-R":
         if alpha_seq is None:
-                alpha_seq = np.exp(np.arange(6,4,-1))*10.0
+            alpha_seq = np.exp(np.arange(6,4,-1))*10.0
         if beta_seq is None:
             beta_seq = np.exp(np.arange(3,0,-1))*2.0
         if gamma_seq is None:
@@ -146,6 +151,7 @@ def get_solution_individual_G(evoked_list, fwd_list, G_ind, noise_cov, X,
             delta_seq = np.exp(np.arange(-6,2,1))    
                 
         if L2_option == 0 or L2_option == 1:
+            # use the last run as initial value?
             stc_mne = mne.minimum_norm.apply_inverse(evoked_list[-1], inverse_operator_list[G_ind[-1]], 
                                              lambda2=1.0,method='MNE')                   
             n_active_ini = 200
@@ -153,25 +159,23 @@ def get_solution_individual_G(evoked_list, fwd_list, G_ind, noise_cov, X,
             mne_val_ind = np.argsort(-1*mne_val)
             active_set_z0 = np.zeros(n_dipoles, dtype = np.bool)
             active_set_z0[mne_val_ind[0:n_active_ini]] = True
-            for i in range(len(label_ind)):
-                active_set_z0[label_ind[i]] = True
-            print active_set_z0.sum()
         else:
             active_set_z0 = active_set.copy()
-        active_t_ind0 = np.ones(n_step, dtype = np.bool)
+        if depth is None:
+            depth = 0.0
         # Note before Oct 13, depth was set to 0.8
         Z, active_set, active_t_ind, alpha_star, beta_star, gamma_star, delta_star,\
-           cv_MSE_lasso, cv_MSE_L2 = STFT_R.get_STFT_R_for_epoch_data.get_STFT_R_solution(
-                                evoked_list,X, fwd_list, G_ind, noise_cov,
-                                labels, ROI_weight_param,
-                                active_set_z0, active_t_ind0,
-                                alpha_seq, beta_seq, gamma_seq,
-                                depth=0.0, maxit= maxit, tol= tol,
+           cv_MSE_lasso, cv_MSE_L2 = STFT_R.get_STFT_R_for_epoch_data.get_STFT_R_solution(evoked_list,X, fwd_list, G_ind, noise_cov,
+                                labels,  ROI_weight_param,
+                                active_set_z0, 
+                                alpha_seq,beta_seq,gamma_seq,
+                                loose= None, depth=depth, maxit=maxit, tol=tol,
                                 wsize=wsize, tstep=tstep, window=0.02,
                                 L2_option = L2_option, delta_seq = delta_seq,
                                 coef_non_zero_mat = coef_non_zero_mat, Z0_l2 = None,
-                                Maxit_J=Maxit_J, Incre_Group_Numb=Incre_Group_Numb,
+                                Maxit_J=Maxit_J, Incre_Group_Numb=Incre_Group_Numb, 
                                 dual_tol= dual_tol,
+                                Flag_backtrack = Flag_backtrack, L0 = L0, eta = eta,
                                 Flag_verbose = Flag_verbose,
                                 Flag_nonROI_L2 = False)
         coef_non_zero_mat = np.abs(Z)>0
@@ -376,8 +380,6 @@ def get_sensor_MSE_on_held_data_individual_G(Z, active_set, test_evoked_list,
     MSE_sensor /= n_trials 
     return MSE_sensor  
 
-
-
 #==============================================================================
 def get_bootstrapped_solution_individual_G(evoked_list,fwd_list, G_ind, noise_cov, X,Z, active_set, 
                               coef_non_zero_mat,path,fname,
@@ -457,7 +459,7 @@ def get_bootstrapped_solution_individual_G(evoked_list,fwd_list, G_ind, noise_co
         for j in range(n_trials):
             evoked_list_btstrp[j].data = btstrp_M[:,:,j] 
         tmp_result = get_solution_individual_G(evoked_list_btstrp, fwd_list,G_ind, noise_cov, X, 
-                 labels, label_ind,
+                 labels, 
                  alpha_seq = None, beta_seq=None, gamma_seq = None,
                  delta_seq = delta_seq, 
                  snr_tuning_seq = snr_tuning_seq,

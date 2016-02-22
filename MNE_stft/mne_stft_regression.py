@@ -8,7 +8,7 @@ import mne
 import numpy as np
 #import matplotlib.pyplot as plt
 from mne.minimum_norm.inverse import (apply_inverse, _check_method, _check_ori,
-         prepare_inverse_operator, _pick_channels_inverse_operator, _check_ch_names,
+         prepare_inverse_operator, combine_xyz, _pick_channels_inverse_operator, _check_ch_names,
          _assemble_kernel)
 from mne.io.constants import FIFF
 from mne.time_frequency import stft, istft
@@ -59,7 +59,6 @@ def _apply_inverse_evoked_list(evoked_list, inverse_operator, lambda2, method="M
             # Compute solution and combine current components (non-linear)
             sol = np.dot(K, evoked_list[i].data)  # apply imaging kernel
             if is_free_ori:
-                logger.info('combining the current components...')
                 sol = combine_xyz(sol)
                 if noise_norm is not None:
                     sol *= noise_norm

@@ -10,16 +10,30 @@ import numpy as np
 from mne.inverse_sparse.mxne_optim import _Phi, _PhiT
 from .sparse_stft import sparse_Phi, sparse_PhiT
 from .Utils import get_lipschitz_const
-from .get_gradient import get_gradient0, get_gradient1
+from .get_gradient_tsparse import get_gradient0_tsparse, get_gradient1_tsparse
+
+
+def f_l2(Z, active_set_z, M, G_list, G_ind, X, n_coefs, q, p, phiT, delta):
+    """
+    Compute the smooth objective function, 0.5* sum of squared error
+    """
+    R_all_sq = 0           
+    for r in range(q):
+        tmp_coef = np.zeros([active_set_z.sum(),n_coefs], dtype = np.complex)
+        for k in range(p):
+            tmp_coef += Z[:,k*n_coefs:(k+1)*n_coefs]*X[r,k]
+        tmpR = M[:,:,r] - phiT(G_list[G_ind[r]][:,active_set_z].dot(tmp_coef))
+        R_all_sq += np.sum(tmpR**2)
+    return 0.5*R_all_sq + delta*np.sum(np.abs(Z)**2)
 
 # allow for different G's for different runs
-
 # ================================================
 def solve_stft_regression_L2_tsparse(M,G_list, G_ind, X, Z0, 
                                     active_set_z0, active_t_ind_z0,
                                     coef_non_zero_mat,
                                 wsize=16, tstep = 4, delta = 0,
                                 maxit=200, tol = 1e-3,lipschitz_constant = None,
+                                Flag_backtrack = True, eta = 1.5, L0 = 1.0,
                                 Flag_verbose = False):                             
     """
     Use the accelerated gradient descent (exactly FISTA without non-smooth penalty)
@@ -63,10 +77,17 @@ def solve_stft_regression_L2_tsparse(M,G_list, G_ind, X, Z0,
     if (active_t_ind_z0.sum()*n_freq*p != Z0.shape[1] or n_dipoles!= len(active_set_z0)):
         print active_t_ind_z0.sum()*n_freq*p, Z0.shape[1],n_dipoles,len(active_set_z0)
         raise ValueError("wrong number of dipoles or coefs")
-    # use the first G in G_list to estimate the lipschiz contant
-    if lipschitz_constant is None: 
-        lipschitz_constant = 1.1*( get_lipschitz_const(M,G_list[0],X,phi,phiT,n_coefs,
-                         tol = 1e-3,Flag_trial_by_trial = False) +2.0*delta)                                             
+
+    if lipschitz_constant is None and not Flag_backtrack: 
+        lipschitz_constant = 1.1* (get_lipschitz_const(M,G_list[0],X,phi,phiT,
+                                    Flag_trial_by_trial = False,n_coefs = n_coefs,
+                                    tol = 1e-3) +2.0*delta)
+        print "lipschitz_constant = %e" % lipschitz_constant
+    if Flag_backtrack:
+        L = L0 
+    else:
+        L = lipschitz_constant
+                                       
     #initialization
     active_t_ind_z = active_t_ind_z0.copy()
     active_set_z = active_set_z0.copy()
@@ -82,7 +103,6 @@ def solve_stft_regression_L2_tsparse(M,G_list, G_ind, X, Z0,
     tau, tau0 = 1.0, 1.0
     obj = np.inf
     old_obj = np.inf
-    obj0 = np.inf
     
     # prepare the M_list from the M
     n_run = len(np.unique(G_ind))
@@ -93,7 +113,7 @@ def solve_stft_regression_L2_tsparse(M,G_list, G_ind, X, Z0,
         X_list.append(X[G_ind == run_id, :])
            
     # greadient part one is fixed   -G^T( \sum_r M(r)) PhiT
-    gradient_y0 = get_gradient0(M_list, G_list, X_list, p, n_run,
+    gradient_y0 = get_gradient0_tsparse(M_list, G_list, X_list, p, n_run,
                   n_active_dipole, active_set_z, n_times,
                   n_coefs_z, n_coefs_all_active, 
                   active_t_ind_z,
@@ -103,7 +123,7 @@ def solve_stft_regression_L2_tsparse(M,G_list, G_ind, X, Z0,
         #  +G^T G(\sum_r X_k^(r) \sum_k Z_k  X_k^r) PhiT Phi
     for i in range(maxit):
         Z0 = Z.copy()
-        gradient_y1 = get_gradient1(M_list, G_list, X_list, Y, p, n_run,
+        gradient_y1 = get_gradient1_tsparse(M_list, G_list, X_list, Y, p, n_run,
                   n_active_dipole, active_set_z, n_times,
                   n_coefs_z, n_coefs_all_active, 
                   active_t_ind_z,
@@ -133,9 +153,24 @@ def solve_stft_regression_L2_tsparse(M,G_list, G_ind, X, Z0,
         gradient_y += 2*delta*Y
         # compute the variable  y- 1/L gradient y
         gradient_y[coef_non_zero_mat_full==0] =0
-        Y -= gradient_y/lipschitz_constant
-        ## ==== ISTA step, get the proximal operator ====
-        Z = Y.copy()
+        
+        # follow the criterion in FISTA f(Y - gradient Y/L) > f(Y)+(0.5/L**2 -1/L ) ||gradient Y||^2
+        # this is different from the general case f(Y - gradient Y/L) > f(Y)-0.5/L ||gradient Y||^2
+        Z = Y- (gradient_y/L)
+        objz = f_l2(Z, active_set_z, M, G_list, G_ind, X, n_coefs, q, p, phiT, delta)
+
+        if Flag_backtrack:
+            objy = f_l2( Y, active_set_z, M, G_list, G_ind, X, n_coefs, q, p, phiT,delta)
+            # Ryan's slides
+            # https://www.cs.cmu.edu/~ggordon/10725-F12/slides/05-gd-revisited.pdf
+            # page 10
+            diff_bt = objz-objy+ (0.5/L)* np.sum( np.abs(gradient_y)**2)
+            while diff_bt > 0:
+                L = L*eta
+                Z = Y-(gradient_y/L)
+                objz = f_l2( Z, active_set_z, M, G_list, G_ind, X, n_coefs, q, p, phiT, delta)
+                diff_bt = objz-objy + (0.5/L)* np.sum( np.abs(gradient_y)**2)
+                
         ## ==== FISTA step, update the variables =====
         tau0 = tau;
         tau = 0.5*(1+ np.sqrt(4*tau**2+1))
@@ -145,24 +180,19 @@ def solve_stft_regression_L2_tsparse(M,G_list, G_ind, X, Z0,
         old_obj = obj
         obj = np.linalg.norm(gradient_y)
         diff_obj = old_obj-obj
-        if i ==0:
-            obj0 = obj
-            
         if Flag_verbose:
-            print "iteration %d" % i
-            print "diff_obj = %e" % diff_obj
-            print "norm gradient = %e" %obj
-            print "diff = %e" %(np.abs(diff).sum()/np.sum(abs(Y)))
-            #print "diff_obj/obj0 = %e" % np.abs(diff_obj/obj0)
-        #stop = (np.abs(diff).sum()/np.sum(abs(Y)) < tol  and np.abs(diff_obj/obj0) < tol)
-        stop = (np.abs(diff).sum()/np.sum(abs(Y)) < tol) 
+            print "\n iteration %d" % i
+            print "sum sq gradient = %f" %obj
+            print "diff_obj = %e" % (diff_obj)
+            print "diff = %e" %(np.abs(diff).sum()/np.sum(abs(Y))) 
+            print "obj = %f" % objz
+        stop = np.abs(diff).sum()/np.sum(abs(Y)) < tol 
         if stop:
             print "convergence reached!"
-            break    
-          
+            break           
     Z = Y.copy() 
     Z[coef_non_zero_mat_full ==0] =0
-    return Z, obj
+    return Z, objz
         
 # =============================================================================        
 def get_MSE_stft_regresion_tsparse(M,G_list, G_ind,X,
@@ -222,8 +252,7 @@ def get_MSE_stft_regresion_tsparse(M,G_list, G_ind,X,
         
     MSE = 0.5* R_all_sq.sum()/np.float(q)
     return MSE, residual, stc_data, active_set_z
-        
-        
+           
 #=====================================================                
 # select the best L2 regularization parameter
 def select_delta_stft_regression_cv(M,G_list, G_ind,X,Z00,
@@ -232,6 +261,7 @@ def select_delta_stft_regression_cv(M,G_list, G_ind,X,Z00,
                                     delta_seq,cv_partition_ind,
                                     wsize=16, tstep = 4, 
                                     maxit=200, tol = 1e-3,
+                                    Flag_backtrack = True, L0 = 1.0, eta = 1.5,
                                     Flag_verbose = False): 
     ''' Find the best L2 regularization parameter delta by cross validation
         Note that here, in training, the trial by trial paramter is estimated, 
@@ -306,6 +336,7 @@ def select_delta_stft_regression_cv(M,G_list, G_ind,X,Z00,
                         active_set_z0, active_t_ind_z0, tmp_coef_non_zero_mat,
                         wsize=wsize, tstep =tstep,delta = tmp_delta,
                         maxit=maxit,tol = tol,lipschitz_constant =L,
+                        Flag_backtrack = Flag_backtrack, L0 = L0, eta = eta,
                         Flag_verbose = Flag_verbose)
             # only take the regression coefficients out
             Z_star = Z[:,0:p*active_t_ind_z0.sum()*n_freq]
