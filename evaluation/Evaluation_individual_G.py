@@ -27,7 +27,8 @@ def get_solution_individual_G(evoked_list, fwd_list, G_ind, noise_cov, X,
                  Maxit_J=10, Incre_Group_Numb=50, dual_tol=0.1,
                  depth = None, 
                  Flag_backtrack = False, L0 = 1.0, eta = 1.1,
-                 Flag_verbose = False):
+                 Flag_verbose = False,
+                 Z0_L2 = None):
     '''
     Get the mne solutions or the solution by my method, "stft_reg"
     Can only be applied to fixed orientation, i.e. each source point has only one direction. 
@@ -104,14 +105,14 @@ def get_solution_individual_G(evoked_list, fwd_list, G_ind, noise_cov, X,
     cv_partition_ind = np.zeros(n_trials)
     cv_partition_ind[1::2] = 1
     n_run = len(np.unique(G_ind))
-    inverse_operator_list = list()
-    for run_id in range(n_run):
-        inverse_operator = mne.minimum_norm.make_inverse_operator(evoked_list[0].info, 
-                                                          fwd_list[run_id], noise_cov, depth = depth,
-                                                          fixed = True) 
-        inverse_operator_list.append(inverse_operator)   
                                                   
     if method == "MNE-R":
+        inverse_operator_list = list()
+        for run_id in range(n_run):
+            inverse_operator = mne.minimum_norm.make_inverse_operator(evoked_list[0].info, 
+                                                              fwd_list[run_id], noise_cov, depth = depth,
+                                                              fixed = True) 
+            inverse_operator_list.append(inverse_operator)   
         # create an inverse operator first
         # tuning parameter range
         if snr_tuning_seq is None:                                                    
@@ -152,7 +153,10 @@ def get_solution_individual_G(evoked_list, fwd_list, G_ind, noise_cov, X,
                 
         if L2_option == 0 or L2_option == 1:
             # use the last run as initial value?
-            stc_mne = mne.minimum_norm.apply_inverse(evoked_list[-1], inverse_operator_list[G_ind[-1]], 
+            inverse_operator1 = mne.minimum_norm.make_inverse_operator(evoked_list[0].info, 
+                                                              fwd_list[-1], noise_cov, depth = None,
+                                                              fixed = True) 
+            stc_mne = mne.minimum_norm.apply_inverse(evoked_list[-1], inverse_operator1, 
                                              lambda2=1.0,method='MNE')                   
             n_active_ini = 200
             mne_val = np.mean(np.abs(stc_mne.data), axis = 1)
@@ -172,7 +176,7 @@ def get_solution_individual_G(evoked_list, fwd_list, G_ind, noise_cov, X,
                                 loose= None, depth=depth, maxit=maxit, tol=tol,
                                 wsize=wsize, tstep=tstep, window=0.02,
                                 L2_option = L2_option, delta_seq = delta_seq,
-                                coef_non_zero_mat = coef_non_zero_mat, Z0_l2 = None,
+                                coef_non_zero_mat = coef_non_zero_mat, Z0_l2 = Z0_L2,
                                 Maxit_J=Maxit_J, Incre_Group_Numb=Incre_Group_Numb, 
                                 dual_tol= dual_tol,
                                 Flag_backtrack = Flag_backtrack, L0 = L0, eta = eta,
