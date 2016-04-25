@@ -28,7 +28,7 @@ def get_solution_individual_G(evoked_list, fwd_list, G_ind, noise_cov, X,
                  depth = None, 
                  Flag_backtrack = False, L0 = 1.0, eta = 1.1,
                  Flag_verbose = False,
-                 Z0_L2 = None):
+                 Z0_L2 = None, n_active_ini = 200):
     '''
     Get the mne solutions or the solution by my method, "stft_reg"
     Can only be applied to fixed orientation, i.e. each source point has only one direction. 
@@ -158,11 +158,11 @@ def get_solution_individual_G(evoked_list, fwd_list, G_ind, noise_cov, X,
                                                               fixed = True) 
             stc_mne = mne.minimum_norm.apply_inverse(evoked_list[-1], inverse_operator1, 
                                              lambda2=1.0,method='MNE')                   
-            n_active_ini = 200
             mne_val = np.mean(np.abs(stc_mne.data), axis = 1)
             mne_val_ind = np.argsort(-1*mne_val)
             active_set_z0 = np.zeros(n_dipoles, dtype = np.bool)
             active_set_z0[mne_val_ind[0:n_active_ini]] = True
+            print "selecting the largest %d dipoles" %n_active_ini
         else:
             active_set_z0 = active_set.copy()
         if depth is None:
