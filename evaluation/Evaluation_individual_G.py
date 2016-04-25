@@ -98,7 +98,7 @@ def get_solution_individual_G(evoked_list, fwd_list, G_ind, noise_cov, X,
     n_freq = wsize// 2+1
     n_coefs = n_step*n_freq
     p = X.shape[1]
-    n_channels,n_dipoles = fwd_list[0]['sol']['data'].shape
+    n_dipoles = fwd_list[0]['src'][0]['nuse'] + fwd_list[0]['src'][1]['nuse']
     # for mne depth = None!, for STFT-R depth = 0.8
     # default depth = none
     # depth = None

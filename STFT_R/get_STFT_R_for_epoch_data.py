@@ -29,7 +29,7 @@ from mne.source_space import label_src_vertno_sel
 from . import L21_active_set as L21solver                                
 from . import L2_tsparse  as L2solver 
 
-def get_STFT_R_solution(evoked_list,X, fwd_list, G_ind, noise_cov,
+def get_STFT_R_solution(evoked_list,X, fwd_list0, G_ind, noise_cov,
                                 label_list,  GroupWeight_Param,
                                 active_set_z0, 
                                 alpha_seq,beta_seq,gamma_seq,
@@ -48,7 +48,7 @@ def get_STFT_R_solution(evoked_list,X, fwd_list, G_ind, noise_cov,
     Input:
         evoked_list, a list of evoked objects
         X, [n_trials, p] design matrix of the regresison
-        fwd_list, a list of n_run  forward solution object
+        fwd_list0, a list of n_run  forward solution object
         run_ind, [n_trials, ] run index, starting from zero
         noise_cov, the noise covariance matrix
         label_list, a list of labels or ROIs. 
@@ -113,10 +113,10 @@ def get_STFT_R_solution(evoked_list,X, fwd_list, G_ind, noise_cov,
     n_runs = len(np.unique(G_ind))
     G_list = list()
     whitener_list = list()
+    fwd_list = deepcopy(fwd_list0)
     for run_id in range(n_runs):
         if loose is None and not is_fixed_orient(fwd_list[run_id]):
             # follow the tf_mixed_norm
-            fwd_list[run_id] = deepcopy(fwd_list[run_id])
             _to_fixed_ori(fwd_list[run_id])
         
         # mask should be None
