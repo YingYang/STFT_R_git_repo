@@ -244,7 +244,7 @@ def solve_stft_regression_tree_group_tsparse(M,G_list, G_ind,X,
         # check if it is zero solution                       
         if not np.any(active_set_z):
             print "active_set = 0"
-            return 0,0,0,0                 
+            return 0,0,0                
         objz = f( Z, active_set_z, M, G_list, G_ind, X, n_coefs, q, p, phiT)
         # compute Z-Y
         diff_z, active_set_diff_z = _add_z([Z,-Y],  np.vstack([active_set_z, active_set_y]))
