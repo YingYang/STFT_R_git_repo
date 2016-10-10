@@ -282,7 +282,12 @@ def get_STFT_R_solution(evoked_list,X, fwd_list0, G_ind, noise_cov,
                                 Flag_backtrack = Flag_backtrack, L0 = L0, eta = eta,
                                 Flag_verbose=Flag_verbose)        
         if tmp_result is None:
-            raise Exception("No active dipoles found. alpha is too big.")
+            # return some results if L2_option == 0 or 1
+            #raise Exception("No active dipoles found. alpha is too big.")
+            print ("No active dipoles found, returning empty solution")
+            return None, np.zeros(n_dipoles, dtype = np.bool), \
+                 np.ones(n_step, dtype = np.bool), alpha_star, beta_star, gamma_star, 0, cv_MSE_lasso, 0
+            
         Z = tmp_result['Z']
         active_set = tmp_result['active_set']
         active_t_ind = np.ones(n_step, dtype = np.bool)

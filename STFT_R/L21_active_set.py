@@ -239,24 +239,37 @@ def select_alpha_beta_gamma_stft_tree_group_cv_active_set(M,G_list, G_ind,X,
                                     Flag_verbose = Flag_verbose,
                                     Flag_backtrack = Flag_backtrack, L0 = L0, eta = eta)
                     if result is None:
-                        # if this happened, no need to test the following beta
+                        # if zero solution, we still want to compare the cv MSE with other solutions
+                        # because in permutation cases, zero solution might be the best solution
+                        # get the MSE, which should be the variance of M_test
+                        # R_all_sq += np.abs(tmpR)**2
+                        # MSE = 0.5* R_all_sq.sum()/np.float(q)
+                        tmp_Z_star = np.zeros([n_dipoles, n_coefs*p],dtype = np.complex)
+                        tmp_active_set_z = np.ones(n_dipoles, dtype = np.bool)
+                        print tmp_Z_star.shape
+                        print tmp_active_set_z.sum()
+                        tmp_val, _,_,_ =get_MSE_stft_regresion_tsparse(Mtest,G_list,G_ind_test,Xtest,
+                                        tmp_Z_star, tmp_active_set_z, np.ones(n_step, dtype = bool),
+                                        wsize=wsize, tstep = tstep)
+                        #print tmp_val
                         print "zero solution"
-                        continue                
-                    Z, active_set_z = result['Z'], result['active_set']  
-                    
-                    active_set_J = result['active_set_J']
-                    # update the initial value
-                    # because beta is ascending, the previous
-                    # result is a good intial value
-                    Z_ini = Z.copy()
-                    active_set_z_ini_tmp = active_set_z.copy()
-                   
-                    # only take the regression coefficients out
-                    Z_star = Z[:,0:p*n_freq*n_step]
-                    # testing
-                    tmp_val, _,_,_ =get_MSE_stft_regresion_tsparse(Mtest,G_list,G_ind_test,Xtest,
-                                    Z_star, active_set_z, np.ones(n_step, dtype = bool),
-                                    wsize=wsize, tstep = tstep)
+                        #continue 
+                    else:
+                        Z, active_set_z = result['Z'], result['active_set']  
+                        
+                        active_set_J = result['active_set_J']
+                        # update the initial value
+                        # because beta is ascending, the previous
+                        # result is a good intial value
+                        Z_ini = Z.copy()
+                        active_set_z_ini_tmp = active_set_z.copy()
+                       
+                        # only take the regression coefficients out
+                        Z_star = Z[:,0:p*n_freq*n_step]
+                        # testing
+                        tmp_val, _,_,_ =get_MSE_stft_regresion_tsparse(Mtest,G_list,G_ind_test,Xtest,
+                                        Z_star, active_set_z, np.ones(n_step, dtype = bool),
+                                        wsize=wsize, tstep = tstep)
                     cv_MSE[i,j,l,k] = tmp_val   
     # row for alpha, and columns for beta  
     cv_MSE = np.mean(cv_MSE, axis = 3)

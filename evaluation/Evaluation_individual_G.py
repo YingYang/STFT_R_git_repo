@@ -152,11 +152,19 @@ def get_solution_individual_G(evoked_list, fwd_list, G_ind, noise_cov, X,
             delta_seq = np.exp(np.arange(-6,2,1))    
                 
         if L2_option == 0 or L2_option == 1:
-            # use the last run as initial value?
-            inverse_operator1 = mne.minimum_norm.make_inverse_operator(evoked_list[0].info, 
-                                                              fwd_list[-1], noise_cov, depth = None,
-                                                              fixed = True) 
-            stc_mne = mne.minimum_norm.apply_inverse(evoked_list[-1], inverse_operator1, 
+            # use the variance across trials to initialize!
+            evoked_std = deepcopy(evoked_list[0])
+            M_all_trials = np.zeros([len(evoked_list), evoked_list[0].data.shape[0],
+                                        evoked_list[0].data.shape[1]])
+            for l0 in range(len(evoked_list)):
+                M_all_trials[l0] = evoked_list[l0].data.copy()
+            M_var = np.var(M_all_trials, axis = 0)
+            evoked_std.data = M_var.copy()
+            del(M_all_trials)
+                            
+            inverse_operator1 = mne.minimum_norm.make_inverse_operator(evoked_std.info, 
+                               fwd_list[-1], noise_cov, depth = None, fixed = True) 
+            stc_mne = mne.minimum_norm.apply_inverse(evoked_std, inverse_operator1, 
                                              lambda2=1.0,method='MNE')                   
             mne_val = np.mean(np.abs(stc_mne.data), axis = 1)
             mne_val_ind = np.argsort(-1*mne_val)
@@ -182,7 +190,11 @@ def get_solution_individual_G(evoked_list, fwd_list, G_ind, noise_cov, X,
                                 Flag_backtrack = Flag_backtrack, L0 = L0, eta = eta,
                                 Flag_verbose = Flag_verbose,
                                 Flag_nonROI_L2 = False)
-        coef_non_zero_mat = np.abs(Z)>0
+        # Z could be None
+        if Z is None:
+            coef_non_zero_mat = None
+        else:
+            coef_non_zero_mat = np.abs(Z)>0
         snr_tuning_star = 0
         cv_MSE_mne = 0
     # common out put
@@ -343,7 +355,8 @@ def get_sensor_MSE_on_held_data_individual_G(Z, active_set, test_evoked_list,
     '''
     Compute the mean squared error on the held-out sensor data.
     This is done on the original sensor data, before pre-whitening and SSP
-    To make sure this is comparable for all three method, I rewrote the computation here. 
+    To make sure this is comparable for all three method, I rewrote the computation here.
+    Can not be applied to the MNE solution without STFT
     Input: 
         Z, [active_set.sum(), n_coef*p]
         active_set,
@@ -360,13 +373,15 @@ def get_sensor_MSE_on_held_data_individual_G(Z, active_set, test_evoked_list,
     n_trials = len(test_evoked_list)
     p = test_X.shape[1]
     
-    if method == "MNE-R":
-        n_times = test_evoked_list[0].data.shape[1]
-        n_step = int(np.ceil(n_times/float(tstep)))
-        n_freq = wsize//2+1
-        n_step = n_times // tstep
-        n_coefs = n_freq*n_step
-        phiT = _PhiT(tstep, n_freq, n_step, n_times)
+    # modified 20160818, why only define the n_steps for method == "MNE_R"
+    #if method == "MNE-R":
+    # this would not work for the MNE non-STFT version
+    n_times = test_evoked_list[0].data.shape[1]
+    n_step = int(np.ceil(n_times/float(tstep)))
+    n_freq = wsize//2+1
+    n_step = n_times // tstep
+    n_coefs = n_freq*n_step
+    phiT = _PhiT(tstep, n_freq, n_step, n_times)
         
     
     M = np.zeros([n_channels, n_times, n_trials ])
